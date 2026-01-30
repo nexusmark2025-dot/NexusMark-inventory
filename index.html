@@ -1,0 +1,1234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="description" content="Professional Inventory Management System with Cloud Sync">
+    
+    <!-- PWA -->
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'><rect width='180' height='180' fill='%230f172a' rx='40'/><text x='90' y='100' font-size='100' text-anchor='middle'>📦</text></svg>">
+    
+    <title>Nexus Inventory Pro</title>
+    
+    <!-- Libraries -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+    
+    <style>
+        * { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
+        .font-display { font-family: 'Space Grotesk', sans-serif; }
+        
+        body {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+            background-attachment: fixed;
+            color: #e2e8f0;
+            overscroll-behavior-y: none;
+        }
+        
+        /* Sync Status */
+        .sync-indicator {
+            position: fixed; top: 70px; right: 20px; z-index: 100;
+            display: flex; align-items: center; gap: 6px;
+            padding: 6px 12px; border-radius: 20px;
+            font-size: 12px; font-weight: 500; transition: all 0.3s;
+            backdrop-filter: blur(10px);
+        }
+        .sync-online { background: rgba(34, 197, 94, 0.2); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.3); }
+        .sync-offline { background: rgba(234, 179, 8, 0.2); color: #facc15; border: 1px solid rgba(234, 179, 8, 0.3); }
+        .sync-syncing { background: rgba(99, 102, 241, 0.2); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.3); animation: pulse 2s infinite; }
+        
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+        
+        /* Glass Effects */
+        .glass-card {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.8);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            transition: all 0.3s; position: relative; overflow: hidden;
+        }
+        .btn-primary:active { transform: scale(0.95); }
+        
+        .glass-input {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: white; transition: all 0.3s;
+        }
+        .glass-input:focus {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(99, 102, 241, 0.5);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+            outline: none;
+        }
+        
+        .status-in-stock { background: rgba(34, 197, 94, 0.2); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.3); }
+        .status-low { background: rgba(234, 179, 8, 0.2); color: #facc15; border: 1px solid rgba(234, 179, 8, 0.3); }
+        .status-out { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
+        
+        .category-tag {
+            background: rgba(99, 102, 241, 0.2);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            color: #818cf8;
+        }
+        
+        .mesh-bg { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; opacity: 0.4; }
+        .mesh-blob { position: absolute; border-radius: 50%; filter: blur(80px); animation: float 20s infinite ease-in-out; }
+        .blob-1 { width: 400px; height: 400px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); top: -10%; left: -10%; }
+        .blob-2 { width: 300px; height: 300px; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); top: 40%; right: -5%; animation-delay: 5s; }
+        @keyframes float { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(30px, -30px); } }
+        
+        /* Table Styles */
+        .inventory-row { background: rgba(255, 255, 255, 0.03); transition: all 0.3s; border-radius: 12px; }
+        .inventory-row:hover { background: rgba(255, 255, 255, 0.08); transform: translateX(4px); }
+        .inventory-row td { padding: 16px; border: none; }
+        .inventory-row td:first-child { border-radius: 12px 0 0 12px; }
+        .inventory-row td:last-child { border-radius: 0 12px 12px 0; }
+        
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.05); }
+        ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 3px; }
+        
+        /* QR Scanner */
+        #qr-reader { border: none !important; border-radius: 12px; overflow: hidden; }
+        #qr-reader__scan_region { background: rgba(0,0,0,0.5) !important; }
+        
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+    <!-- Sync Status -->
+    <div id="sync-status" class="sync-indicator sync-offline hidden">
+        <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z"/></svg>
+        <span id="sync-text">Offline</span>
+    </div>
+
+    <!-- LOGIN SCREEN -->
+    <div id="login-screen" class="fixed inset-0 z-50 flex flex-col items-center justify-center p-4 bg-slate-900">
+        <div class="mesh-bg"><div class="mesh-blob blob-1"></div><div class="mesh-blob blob-2"></div></div>
+        
+        <div class="glass-card rounded-2xl p-8 w-full max-w-md text-center relative z-10">
+            <div class="w-20 h-20 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-4xl shadow-2xl shadow-indigo-500/30">
+                📦
+            </div>
+            <h1 class="font-display text-3xl font-bold mb-2">Nexus Inventory</h1>
+            <p class="text-gray-400 mb-8">Cloud-Based Business Management</p>
+
+            <!-- Client Login -->
+            <div class="space-y-4 text-left">
+                <div>
+                    <label class="text-xs text-gray-400 uppercase tracking-wider font-semibold">Business ID</label>
+                    <input type="text" id="tenant-id" placeholder="e.g., SHOP-123" class="w-full glass-input rounded-xl px-4 py-3 mt-1 uppercase tracking-wider">
+                </div>
+                <div>
+                    <label class="text-xs text-gray-400 uppercase tracking-wider font-semibold">Email</label>
+                    <input type="email" id="login-email" placeholder="owner@business.com" class="w-full glass-input rounded-xl px-4 py-3 mt-1">
+                </div>
+                <div>
+                    <label class="text-xs text-400 uppercase tracking-wider font-semibold">Password</label>
+                    <input type="password" id="login-password" placeholder="••••••••" class="w-full glass-input rounded-xl px-4 py-3 mt-1">
+                </div>
+                
+                <button onclick="loginClient()" class="w-full btn-primary py-4 rounded-xl text-white font-bold shadow-lg mt-4 flex items-center justify-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"/></svg>
+                    Access My Business
+                </button>
+            </div>
+
+            <div class="mt-6 pt-6 border-t border-white/10">
+                <button onclick="showQRScanner()" class="w-full py-3 rounded-xl border border-white/10 text-gray-300 hover:bg-white/5 transition-colors flex items-center justify-center gap-2 text-sm">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"/></svg>
+                    Scan QR to Connect Device
+                </button>
+            </div>
+
+            <!-- Admin Section -->
+            <div class="mt-6 pt-4 border-t border-white/5">
+                <button onclick="toggleAdminLogin()" class="text-xs text-gray-500 hover:text-gray-300 transition-colors">Admin Access</button>
+                <div id="admin-login-section" class="hidden mt-4 space-y-3">
+                    <input type="password" id="admin-code" placeholder="Admin PIN" class="w-full glass-input rounded-lg px-3 py-2 text-sm">
+                    <button onclick="verifyAdmin()" class="w-full bg-slate-700 hover:bg-slate-600 text-white rounded-lg py-2 text-sm transition-colors">Access Admin Panel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- QR SCANNER MODAL -->
+    <div id="qr-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-black/90 backdrop-blur-sm">
+        <div class="glass-panel rounded-2xl w-full max-w-lg p-6 border border-white/20 relative">
+            <button onclick="closeQRScanner()" class="absolute top-4 right-4 text-gray-400 hover:text-white z-10 bg-black/50 rounded-full p-2">✕</button>
+            <h3 class="font-display text-xl font-bold mb-4 text-center">Scan Device QR Code</h3>
+            <div id="qr-reader" class="w-full rounded-xl overflow-hidden"></div>
+            <p class="text-center text-sm text-gray-400 mt-4">Point camera at QR code from your other device</p>
+        </div>
+    </div>
+
+    <!-- QR DISPLAY MODAL -->
+    <div id="qr-display-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+        <div class="glass-panel rounded-2xl w-full max-w-sm p-8 border border-white/20 text-center">
+            <h3 class="font-display text-2xl font-bold mb-2">Connect New Device</h3>
+            <p class="text-sm text-gray-400 mb-6">Scan this code with your phone camera</p>
+            <div id="qrcode" class="flex justify-center mb-6 bg-white p-4 rounded-2xl"></div>
+            <div class="bg-white/5 rounded-lg p-3 mb-6">
+                <p class="text-xs text-gray-400">Business ID</p>
+                <p id="qr-tenant-display" class="font-mono text-lg font-bold text-emerald-400"></p>
+            </div>
+            <button onclick="closeQRDisplay()" class="btn-primary px-8 py-3 rounded-xl text-white font-bold w-full">Done</button>
+        </div>
+    </div>
+
+    <!-- ADMIN PANEL MODAL -->
+    <div id="admin-panel" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-black/90 backdrop-blur-sm overflow-y-auto">
+        <div class="glass-panel rounded-2xl w-full max-w-2xl p-6 border border-white/20 my-8">
+            <div class="flex justify-between items-center mb-6 border-b border-white/10 pb-4">
+                <div>
+                    <h2 class="font-display text-2xl font-bold">Admin Dashboard</h2>
+                    <p class="text-sm text-gray-400">Manage Client Accounts</p>
+                </div>
+                <button onclick="closeAdminPanel()" class="text-gray-400 hover:text-white text-2xl">✕</button>
+            </div>
+
+            <!-- Create New Client -->
+            <div class="glass-card rounded-xl p-6 mb-6 border border-emerald-500/20">
+                <h3 class="font-bold text-emerald-400 mb-4 flex items-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                    Create New Business Account
+                </h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <input type="text" id="new-business-name" placeholder="Business Name" class="glass-input rounded-lg px-4 py-3">
+                    <input type="email" id="new-client-email" placeholder="Client Email" class="glass-input rounded-lg px-4 py-3">
+                    <input type="password" id="new-client-password" placeholder="Temporary Password" class="glass-input rounded-lg px-4 py-3">
+                    <select id="new-client-plan" class="glass-input rounded-lg px-4 py-3">
+                        <option value="monthly">Monthly (₹200/month)</option>
+                        <option value="onetime">One-Time (₹10,000 + ₹50/month)</option>
+                    </select>
+                </div>
+                <button onclick="createNewClient()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg py-3 font-bold transition-colors flex items-center justify-center gap-2">
+                    Create Account & Generate ID
+                </button>
+            </div>
+
+            <!-- Client List -->
+            <div class="space-y-3 max-h-96 overflow-y-auto" id="admin-client-list">
+                <!-- Populated dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <!-- CATEGORY MANAGEMENT MODAL -->
+    <div id="category-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <div class="glass-panel rounded-2xl w-full max-w-md p-6 border border-white/20">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="font-display text-2xl font-bold">Manage Categories</h2>
+                <button onclick="closeCategoryModal()" class="text-gray-400 hover:text-white">✕</button>
+            </div>
+            
+            <div class="flex gap-2 mb-6">
+                <input type="text" id="new-category-input" placeholder="New category name" class="flex-1 glass-input rounded-xl px-4 py-2">
+                <button onclick="addCategory()" class="btn-primary px-4 py-2 rounded-xl text-white">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                </button>
+            </div>
+            
+            <div id="categories-list" class="space-y-2 max-h-64 overflow-y-auto">
+                <!-- Dynamic categories -->
+            </div>
+        </div>
+    </div>
+
+    <!-- ITEM MODAL (Add/Edit) -->
+    <div id="item-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <div class="glass-panel rounded-2xl w-full max-w-lg p-6 border border-white/20 max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="font-display text-2xl font-bold" id="modal-title">Add Item</h2>
+                <button onclick="closeModal()" class="text-gray-400 hover:text-white text-xl">✕</button>
+            </div>
+
+            <form id="item-form" onsubmit="handleFormSubmit(event)" class="space-y-4">
+                <input type="hidden" id="item-id">
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-400 mb-1">Item Name</label>
+                    <input type="text" id="item-name" required class="w-full glass-input rounded-xl px-4 py-3" placeholder="e.g., MacBook Pro">
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-400 mb-1">Category</label>
+                        <select id="item-category" required class="w-full glass-input rounded-xl px-4 py-3"></select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-400 mb-1">SKU Code</label>
+                        <input type="text" id="item-sku" required class="w-full glass-input rounded-xl px-4 py-3" placeholder="SKU-001">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-400 mb-1">Quantity</label>
+                        <input type="number" id="item-quantity" required min="0" class="w-full glass-input rounded-xl px-4 py-3" placeholder="0">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-400 mb-1">Unit Price (₹)</label>
+                        <input type="number" id="item-price" required min="0" step="0.01" class="w-full glass-input rounded-xl px-4 py-3" placeholder="0.00">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-400 mb-1">Description (Optional)</label>
+                    <textarea id="item-description" rows="3" class="w-full glass-input rounded-xl px-4 py-3 resize-none" placeholder="Product details..."></textarea>
+                </div>
+
+                <div class="flex gap-3 pt-4">
+                    <button type="button" onclick="closeModal()" class="flex-1 py-3 rounded-xl border border-white/10 text-gray-300 hover:bg-white/5 transition-colors">Cancel</button>
+                    <button type="submit" class="flex-1 btn-primary py-3 rounded-xl text-white font-bold shadow-lg shadow-indigo-500/25">Save Item</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- DELETE CONFIRMATION -->
+    <div id="delete-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <div class="glass-panel rounded-2xl w-full max-w-sm p-6 border border-red-500/20 text-center">
+            <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-red-500/20 flex items-center justify-center text-3xl">🗑️</div>
+            <h3 class="font-display text-xl font-bold mb-2">Delete Item?</h3>
+            <p class="text-gray-400 mb-6 text-sm">This will permanently remove the item from inventory.</p>
+            <div class="flex gap-3">
+                <button onclick="closeDeleteModal()" class="flex-1 py-3 rounded-xl border border-white/10 text-gray-300 hover:bg-white/5 transition-colors">Cancel</button>
+                <button onclick="confirmDelete()" class="flex-1 bg-gradient-to-r from-red-500 to-rose-600 text-white py-3 rounded-xl font-bold hover:shadow-lg hover:shadow-red-500/30 transition-all">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN APP INTERFACE -->
+    <div id="main-app" class="hidden flex h-screen overflow-hidden">
+        <div class="mesh-bg"><div class="mesh-blob blob-1"></div><div class="mesh-blob blob-2"></div></div>
+
+        <!-- SIDEBAR -->
+        <aside id="sidebar" class="hidden md:flex flex-col w-80 glass-panel border-r border-white/10 z-30 h-full">
+            <div class="p-6 border-b border-white/10">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center gap-3">
+                        <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-2xl shadow-lg shadow-indigo-500/30">📦</div>
+                        <div>
+                            <h1 class="font-display text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400">Nexus</h1>
+                            <p class="text-xs text-gray-400">Inventory Pro</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-white/5 rounded-lg p-3 border border-white/10">
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-xs text-gray-400">Business ID</span>
+                        <button onclick="showMyQR()" class="text-xs text-emerald-400 hover:text-emerald-300 flex items-center gap-1" title="Show QR for new devices">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"/></svg>
+                            Add Device
+                        </button>
+                    </div>
+                    <div id="current-tenant-display" class="font-mono text-sm font-bold text-emerald-400 truncate">-</div>
+                    <div class="flex items-center gap-2 mt-2 text-xs text-gray-500">
+                        <span id="last-sync" class="text-xs">Never synced</span>
+                    </div>
+                </div>
+            </div>
+
+            <nav class="flex-1 p-4 space-y-2 overflow-y-auto">
+                <button onclick="switchView('dashboard')" class="nav-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-white/10 text-white transition-all hover:bg-white/20">
+                    <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+                    <span class="font-medium">Dashboard</span>
+                </button>
+
+                <button onclick="switchView('inventory')" class="nav-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl text-gray-400 hover:bg-white/10 hover:text-white transition-all">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+                    <span>Inventory</span>
+                    <span id="sidebar-count" class="ml-auto text-xs bg-indigo-500/20 text-indigo-300 px-2 py-1 rounded-full">0</span>
+                </button>
+
+                <div class="pt-4 mt-4 border-t border-white/10">
+                    <div class="flex items-center justify-between px-4 mb-2">
+                        <span class="text-xs font-semibold text-gray-500 uppercase">Categories</span>
+                        <button onclick="openCategoryModal()" class="text-xs text-indigo-400 hover:text-indigo-300">Manage</button>
+                    </div>
+                    <div id="category-list" class="space-y-1"></div>
+                </div>
+            </nav>
+
+            <div class="p-4 border-t border-white/10 space-y-2">
+                <button onclick="exportToExcel()" class="w-full flex items-center gap-2 px-4 py-2 rounded-lg text-sm text-emerald-400 hover:bg-emerald-500/10 transition-colors">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                    Export Excel
+                </button>
+                <button onclick="logout()" class="w-full flex items-center gap-2 px-4 py-2 rounded-lg text-sm text-red-400 hover:bg-red-500/10 transition-colors">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+                    Disconnect
+                </button>
+            </div>
+        </aside>
+
+        <!-- MAIN CONTENT -->
+        <main class="flex-1 flex flex-col overflow-hidden relative">
+            <!-- Header -->
+            <header class="glass-panel border-b border-white/10 px-6 py-4 flex items-center justify-between sticky top-0 z-40">
+                <div class="flex items-center gap-4 flex-1">
+                    <button class="md:hidden text-gray-400 hover:text-white" onclick="toggleSidebar()">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+                    </button>
+                    <div class="relative flex-1 max-w-md">
+                        <input type="text" id="searchInput" placeholder="Search inventory..." class="w-full glass-input rounded-xl pl-10 pr-4 py-2.5 text-sm" oninput="handleSearch()">
+                        <svg class="absolute left-3 top-3 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                    </div>
+                </div>
+                <button onclick="openAddModal()" class="btn-primary px-4 py-2 rounded-xl text-white font-medium flex items-center gap-2 shadow-lg shadow-indigo-500/25">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                    <span class="hidden sm:inline">Add Item</span>
+                </button>
+            </header>
+
+            <!-- Content -->
+            <div class="flex-1 overflow-y-auto p-4 md:p-6">
+                
+                <!-- DASHBOARD VIEW -->
+                <div id="dashboard-view" class="space-y-6">
+                    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+                        <div class="glass-card rounded-2xl p-4 md:p-6 relative overflow-hidden">
+                            <div class="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-indigo-500/20 to-purple-500/20 rounded-full blur-2xl -mr-16 -mt-16"></div>
+                            <p class="text-gray-400 text-xs md:text-sm mb-1">Total Items</p>
+                            <h3 class="text-2xl md:text-3xl font-display font-bold" id="stat-total">0</h3>
+                        </div>
+                        <div class="glass-card rounded-2xl p-4 md:p-6 relative overflow-hidden">
+                            <div class="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-emerald-500/20 to-teal-500/20 rounded-full blur-2xl -mr-16 -mt-16"></div>
+                            <p class="text-gray-400 text-xs md:text-sm mb-1">Inventory Value</p>
+                            <h3 class="text-2xl md:text-3xl font-display font-bold text-emerald-400" id="stat-value">₹0</h3>
+                        </div>
+                        <div class="glass-card rounded-2xl p-4 md:p-6 relative overflow-hidden">
+                            <div class="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-amber-500/20 to-orange-500/20 rounded-full blur-2xl -mr-16 -mt-16"></div>
+                            <p class="text-gray-400 text-xs md:text-sm mb-1">Low Stock</p>
+                            <h3 class="text-2xl md:text-3xl font-display font-bold text-amber-400" id="stat-low">0</h3>
+                        </div>
+                        <div class="glass-card rounded-2xl p-4 md:p-6 relative overflow-hidden">
+                            <div class="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-cyan-500/20 to-blue-500/20 rounded-full blur-2xl -mr-16 -mt-16"></div>
+                            <p class="text-gray-400 text-xs md:text-sm mb-1">Categories</p>
+                            <h3 class="text-2xl md:text-3xl font-display font-bold" id="stat-categories">0</h3>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div class="glass-card rounded-2xl p-6">
+                            <h3 class="font-display font-semibold text-lg mb-4">Value Trend</h3>
+                            <div class="h-64">
+                                <canvas id="trendChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="glass-card rounded-2xl p-6">
+                            <h3 class="font-display font-semibold text-lg mb-4">Stock Alerts</h3>
+                            <div id="low-stock-alerts" class="space-y-3 max-h-64 overflow-y-auto"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- INVENTORY VIEW -->
+                <div id="inventory-view" class="hidden space-y-6">
+                    <div class="flex flex-wrap items-center justify-between gap-4">
+                        <div class="flex items-center gap-2">
+                            <select id="filter-category" onchange="renderTable()" class="glass-input rounded-lg px-4 py-2 text-sm bg-transparent">
+                                <option value="">All Categories</option>
+                            </select>
+                            <select id="filter-status" onchange="renderTable()" class="glass-input rounded-lg px-4 py-2 text-sm bg-transparent">
+                                <option value="">All Status</option>
+                                <option value="in-stock">In Stock</option>
+                                <option value="low">Low Stock</option>
+                                <option value="out">Out of Stock</option>
+                            </select>
+                        </div>
+                        <div class="text-sm text-gray-400" id="showing-count">Showing 0 items</div>
+                    </div>
+
+                    <div class="glass-card rounded-2xl overflow-hidden">
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left">
+                                <thead>
+                                    <tr class="text-gray-400 text-xs uppercase border-b border-white/10">
+                                        <th class="px-6 py-4 font-medium cursor-pointer hover:text-white" onclick="sortTable('name')">Item ↕</th>
+                                        <th class="px-6 py-4 font-medium cursor-pointer hover:text-white hidden md:table-cell" onclick="sortTable('category')">Category ↕</th>
+                                        <th class="px-6 py-4 font-medium cursor-pointer hover:text-white" onclick="sortTable('quantity')">Qty ↕</th>
+                                        <th class="px-6 py-4 font-medium cursor-pointer hover:text-white" onclick="sortTable('price')">Price ↕</th>
+                                        <th class="px-6 py-4 font-medium text-right">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="inventory-table-body" class="text-sm"></tbody>
+                            </table>
+                        </div>
+                        <div id="empty-state" class="hidden py-20 text-center">
+                            <div class="text-6xl mb-4">📭</div>
+                            <p class="text-gray-400 mb-2">No items found</p>
+                            <button onclick="openAddModal()" class="text-indigo-400 hover:text-indigo-300 font-medium">Add your first item</button>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // ================= FIREBASE CONFIG =================
+        // REPLACE THESE WITH YOUR ACTUAL FIREBASE CONFIG
+        const firebaseConfig = {
+            apiKey: "AIzaSyXXXXXXXXXXXXXXXXXXXXXX",
+            authDomain: "your-project.firebaseapp.com",
+            databaseURL: "https://your-project-default-rtdb.firebaseio.com",
+            projectId: "your-project",
+            storageBucket: "your-project.appspot.com",
+            messagingSenderId: "123456789",
+            appId: "1:123456789:web:abcdef123456"
+        };
+        
+        // Admin PIN for creating new accounts (Change this!)
+        const ADMIN_SECRET_PIN = "NEXUS2024";
+        
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+        const auth = firebase.auth();
+        
+        // Global State
+        let currentTenant = null;
+        let currentUser = null;
+        let inventoryData = [];
+        let categoriesList = ['Electronics', 'Furniture', 'Accessories', 'Office Supplies'];
+        let editingId = null;
+        let deletingId = null;
+        let sortConfig = { key: null, direction: 'asc' };
+        let charts = {};
+
+        // ================= AUTHENTICATION =================
+        
+        function loginClient() {
+            const tenantId = document.getElementById('tenant-id').value.trim().toLowerCase();
+            const email = document.getElementById('login-email').value.trim();
+            const password = document.getElementById('login-password').value;
+            
+            if (!tenantId || !email || !password) {
+                alert('Please fill all fields');
+                return;
+            }
+            
+            auth.signInWithEmailAndPassword(email, password)
+                .then((userCredential) => {
+                    currentUser = userCredential.user;
+                    return database.ref(`tenants/${tenantId}/meta/owner`).once('value');
+                })
+                .then((snapshot) => {
+                    if (snapshot.exists() && snapshot.val() === currentUser.uid) {
+                        currentTenant = tenantId;
+                        localStorage.setItem('nexus_tenant', tenantId);
+                        localStorage.setItem('nexus_email', email);
+                        initializeApp();
+                    } else {
+                        throw new Error('Invalid tenant access');
+                    }
+                })
+                .catch((error) => {
+                    alert('Login failed: ' + error.message);
+                    auth.signOut();
+                });
+        }
+
+        function toggleAdminLogin() {
+            const section = document.getElementById('admin-login-section');
+            section.classList.toggle('hidden');
+        }
+
+        function verifyAdmin() {
+            const pin = document.getElementById('admin-code').value;
+            if (pin === ADMIN_SECRET_PIN) {
+                showAdminPanel();
+            } else {
+                alert('Invalid PIN');
+            }
+        }
+
+        function showAdminPanel() {
+            document.getElementById('login-screen').classList.add('hidden');
+            document.getElementById('admin-panel').classList.remove('hidden');
+            document.getElementById('admin-panel').classList.add('flex');
+            loadAdminClientList();
+        }
+
+        function closeAdminPanel() {
+            document.getElementById('admin-panel').classList.add('hidden');
+            document.getElementById('admin-panel').classList.remove('flex');
+            document.getElementById('login-screen').classList.remove('hidden');
+        }
+
+        function createNewClient() {
+            const businessName = document.getElementById('new-business-name').value.trim();
+            const email = document.getElementById('new-client-email').value.trim();
+            const password = document.getElementById('new-client-password').value;
+            const plan = document.getElementById('new-client-plan').value;
+            
+            if (!businessName || !email || !password) {
+                alert('Please fill all fields');
+                return;
+            }
+            
+            if (password.length < 6) {
+                alert('Password must be at least 6 characters');
+                return;
+            }
+            
+            // Generate unique tenant ID
+            const tenantId = businessName.toLowerCase().replace(/[^a-z0-9]/g, '-') + '-' + Math.random().toString(36).substr(2, 5);
+            
+            auth.createUserWithEmailAndPassword(email, password)
+                .then((userCredential) => {
+                    const uid = userCredential.user.uid;
+                    
+                    // Create tenant structure
+                    const tenantData = {
+                        meta: {
+                            businessName: businessName,
+                            owner: uid,
+                            email: email,
+                            plan: plan,
+                            created: Date.now(),
+                            active: true
+                        },
+                        inventory: {},
+                        categories: categoriesList
+                    };
+                    
+                    return database.ref(`tenants/${tenantId}`).set(tenantData);
+                })
+                .then(() => {
+                    // Show success with credentials
+                    const credentials = `BUSINESS CREATED!\n\nBusiness: ${businessName}\nTenant ID: ${tenantId}\nEmail: ${email}\nPlan: ${plan === 'monthly' ? '₹200/month' : '₹10,000 one-time'}\n\nGive these credentials to your client.`;
+                    alert(credentials);
+                    
+                    // Clear form
+                    document.getElementById('new-business-name').value = '';
+                    document.getElementById('new-client-email').value = '';
+                    document.getElementById('new-client-password').value = '';
+                    
+                    loadAdminClientList();
+                })
+                .catch((error) => {
+                    alert('Error: ' + error.message);
+                });
+        }
+
+        function loadAdminClientList() {
+            const container = document.getElementById('admin-client-list');
+            container.innerHTML = '<div class="text-center text-gray-400 py-4">Loading...</div>';
+            
+            database.ref('tenants').once('value', (snapshot) => {
+                const tenants = snapshot.val();
+                if (!tenants) {
+                    container.innerHTML = '<div class="text-center text-gray-400">No clients yet</div>';
+                    return;
+                }
+                
+                container.innerHTML = Object.entries(tenants).map(([id, data]) => {
+                    const meta = data.meta || {};
+                    const itemCount = data.inventory ? Object.keys(data.inventory).length : 0;
+                    return `
+                        <div class="glass-card rounded-lg p-4 border border-white/5 flex justify-between items-center">
+                            <div>
+                                <h4 class="font-bold text-white">${meta.businessName || 'Unnamed'}</h4>
+                                <p class="text-xs text-gray-400">ID: ${id}</p>
+                                <p class="text-xs text-gray-500">${meta.email || 'No email'}</p>
+                                <span class="text-xs ${meta.plan === 'monthly' ? 'text-blue-400' : 'text-purple-400'} mt-1 inline-block">
+                                    ${meta.plan === 'monthly' ? '₹200/month' : '₹10,000 one-time'}
+                                </span>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-2xl font-bold text-emerald-400">${itemCount}</div>
+                                <div class="text-xs text-gray-500">items</div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            });
+        }
+
+        // ================= QR CODE SYSTEM =================
+
+        function showQRScanner() {
+            document.getElementById('qr-modal').classList.remove('hidden');
+            document.getElementById('qr-modal').classList.add('flex');
+            
+            const html5QrCode = new Html5Qrcode("qr-reader");
+            html5QrCode.start(
+                { facingMode: "environment" },
+                { fps: 10, qrbox: { width: 250, height: 250 } },
+                (decodedText) => {
+                    html5QrCode.stop();
+                    closeQRScanner();
+                    connectWithQR(decodedText);
+                },
+                (error) => {}
+            ).catch(err => {
+                console.error("QR Error:", err);
+                alert("Camera access denied or not available");
+            });
+            
+            window.currentQRScanner = html5QrCode;
+        }
+
+        function closeQRScanner() {
+            if (window.currentQRScanner) {
+                window.currentQRScanner.stop().catch(() => {});
+            }
+            document.getElementById('qr-modal').classList.add('hidden');
+            document.getElementById('qr-modal').classList.remove('flex');
+        }
+
+        function connectWithQR(qrData) {
+            try {
+                const data = JSON.parse(qrData);
+                if (data.tenantId && data.email) {
+                    document.getElementById('tenant-id').value = data.tenantId;
+                    document.getElementById('login-email').value = data.email;
+                    alert('QR Code scanned! Please enter your password to connect.');
+                } else {
+                    throw new Error('Invalid QR');
+                }
+            } catch (e) {
+                // Plain text tenant ID
+                document.getElementById('tenant-id').value = qrData;
+                alert('Business ID detected. Please enter email and password.');
+            }
+        }
+
+        function showMyQR() {
+            if (!currentTenant) return;
+            
+            const qrData = JSON.stringify({
+                tenantId: currentTenant,
+                timestamp: Date.now()
+            });
+            
+            const container = document.getElementById('qrcode');
+            container.innerHTML = '';
+            
+            new QRCode(container, {
+                text: qrData,
+                width: 200,
+                height: 200,
+                colorDark: "#000000",
+                colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.H
+            });
+            
+            document.getElementById('qr-tenant-display').textContent = currentTenant.toUpperCase();
+            document.getElementById('qr-display-modal').classList.remove('hidden');
+            document.getElementById('qr-display-modal').classList.add('flex');
+        }
+
+        function closeQRDisplay() {
+            document.getElementById('qr-display-modal').classList.add('hidden');
+            document.getElementById('qr-display-modal').classList.remove('flex');
+        }
+
+        // ================= APP INITIALIZATION =================
+
+        function initializeApp() {
+            document.getElementById('login-screen').classList.add('hidden');
+            document.getElementById('main-app').classList.remove('hidden');
+            document.getElementById('current-tenant-display').textContent = currentTenant.toUpperCase();
+            
+            setupRealtimeSync();
+            loadCategories();
+            renderAll();
+            
+            // Check for returning session
+            const lastSync = localStorage.getItem('nexus_lastSync');
+            if (lastSync) {
+                document.getElementById('last-sync').textContent = new Date(parseInt(lastSync)).toLocaleTimeString();
+            }
+        }
+
+        function setupRealtimeSync() {
+            if (!currentTenant) return;
+            
+            // Inventory sync
+            database.ref(`tenants/${currentTenant}/inventory`).on('value', (snapshot) => {
+                const data = snapshot.val();
+                inventoryData = data ? Object.values(data) : [];
+                renderAll();
+                updateSyncStatus('online');
+                localStorage.setItem('nexus_lastSync', Date.now().toString());
+                document.getElementById('last-sync').textContent = new Date().toLocaleTimeString();
+            });
+            
+            // Categories sync
+            database.ref(`tenants/${currentTenant}/categories`).on('value', (snap) => {
+                if (snap.exists()) {
+                    categoriesList = snap.val();
+                    updateCategoryUI();
+                }
+            });
+            
+            // Connection monitoring
+            const connectedRef = database.ref('.info/connected');
+            connectedRef.on('value', (snap) => {
+                if (snap.val() === true) {
+                    updateSyncStatus('online');
+                } else {
+                    updateSyncStatus('offline');
+                }
+            });
+        }
+
+        function updateSyncStatus(status) {
+            const indicator = document.getElementById('sync-status');
+            const text = document.getElementById('sync-text');
+            
+            indicator.classList.remove('hidden', 'sync-online', 'sync-offline', 'sync-syncing');
+            
+            if (status === 'online') {
+                indicator.classList.add('sync-online');
+                text.textContent = 'Synced';
+            } else if (status === 'offline') {
+                indicator.classList.add('sync-offline');
+                text.textContent = 'Offline';
+            }
+            
+            indicator.classList.remove('hidden');
+        }
+
+        function loadCategories() {
+            updateCategoryUI();
+        }
+
+        function updateCategoryUI() {
+            // Update sidebar
+            const sidebarList = document.getElementById('category-list');
+            sidebarList.innerHTML = categoriesList.map(cat => {
+                const count = inventoryData.filter(i => i.category === cat).length;
+                return `
+                    <button onclick="filterByCategory('${cat}')" class="w-full flex justify-between items-center px-4 py-2 rounded-lg text-sm text-gray-400 hover:bg-white/5 hover:text-white transition-colors">
+                        <span>${cat}</span>
+                        <span class="text-xs bg-white/10 px-2 py-0.5 rounded-full">${count}</span>
+                    </button>
+                `;
+            }).join('');
+            
+            // Update filters
+            const filterSelect = document.getElementById('filter-category');
+            const currentVal = filterSelect.value;
+            filterSelect.innerHTML = '<option value="">All Categories</option>' + 
+                categoriesList.map(cat => `<option value="${cat}">${cat}</option>`).join('');
+            filterSelect.value = currentVal;
+            
+            // Update modal select
+            const modalSelect = document.getElementById('item-category');
+            if (modalSelect) {
+                modalSelect.innerHTML = categoriesList.map(cat => `<option value="${cat}">${cat}</option>`).join('');
+            }
+        }
+
+        // ================= CRUD OPERATIONS =================
+
+        function handleFormSubmit(e) {
+            e.preventDefault();
+            if (!currentTenant) return;
+            
+            const item = {
+                id: editingId || Date.now(),
+                name: document.getElementById('item-name').value,
+                category: document.getElementById('item-category').value,
+                sku: document.getElementById('item-sku').value,
+                quantity: parseInt(document.getElementById('item-quantity').value) || 0,
+                price: parseFloat(document.getElementById('item-price').value) || 0,
+                description: document.getElementById('item-description').value || '',
+                updated: Date.now()
+            };
+            
+            database.ref(`tenants/${currentTenant}/inventory/${item.id}`).set(item)
+                .then(() => {
+                    closeModal();
+                    editingId = null;
+                    document.getElementById('item-form').reset();
+                })
+                .catch(err => alert('Error saving: ' + err.message));
+        }
+
+        function deleteItem(id) {
+            deletingId = id;
+            document.getElementById('delete-modal').classList.remove('hidden');
+            document.getElementById('delete-modal').classList.add('flex');
+        }
+
+        function confirmDelete() {
+            if (deletingId && currentTenant) {
+                database.ref(`tenants/${currentTenant}/inventory/${deletingId}`).remove()
+                    .then(() => {
+                        closeDeleteModal();
+                        deletingId = null;
+                    });
+            }
+        }
+
+        // ================= CATEGORY MANAGEMENT =================
+
+        function openCategoryModal() {
+            renderCategoriesModal();
+            document.getElementById('category-modal').classList.remove('hidden');
+            document.getElementById('category-modal').classList.add('flex');
+        }
+
+        function closeCategoryModal() {
+            document.getElementById('category-modal').classList.add('hidden');
+            document.getElementById('category-modal').classList.remove('flex');
+        }
+
+        function renderCategoriesModal() {
+            const container = document.getElementById('categories-list');
+            container.innerHTML = categoriesList.map((cat, index) => {
+                const itemCount = inventoryData.filter(i => i.category === cat).length;
+                const canDelete = itemCount === 0;
+                
+                return `
+                    <div class="flex justify-between items-center p-3 rounded-lg bg-white/5 border border-white/5">
+                        <div class="flex items-center gap-3">
+                            <span class="category-tag px-2 py-1 rounded text-xs font-medium">${cat}</span>
+                            <span class="text-xs text-gray-500">${itemCount} items</span>
+                        </div>
+                        <button onclick="${canDelete ? `deleteCategory(${index})` : ''}" 
+                            class="${canDelete ? 'text-red-400 hover:text-red-300' : 'text-gray-600 cursor-not-allowed'} text-sm"
+                            ${!canDelete ? 'title="Delete items first"' : ''}>
+                            Delete
+                        </button>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function addCategory() {
+            const input = document.getElementById('new-category-input');
+            const name = input.value.trim();
+            
+            if (!name) return;
+            if (categoriesList.includes(name)) {
+                alert('Category already exists');
+                return;
+            }
+            
+            categoriesList.push(name);
+            database.ref(`tenants/${currentTenant}/categories`).set(categoriesList)
+                .then(() => {
+                    input.value = '';
+                    renderCategoriesModal();
+                    updateCategoryUI();
+                });
+        }
+
+        function deleteCategory(index) {
+            if (!confirm('Delete this category?')) return;
+            categoriesList.splice(index, 1);
+            database.ref(`tenants/${currentTenant}/categories`).set(categoriesList)
+                .then(() => {
+                    renderCategoriesModal();
+                    updateCategoryUI();
+                });
+        }
+
+        // ================= UI RENDERING =================
+
+        function renderAll() {
+            updateStats();
+            renderTable();
+            updateCategoryUI();
+            renderAlerts();
+            updateCharts();
+        }
+
+        function updateStats() {
+            document.getElementById('stat-total').textContent = inventoryData.length;
+            document.getElementById('sidebar-count').textContent = inventoryData.length;
+            
+            const totalValue = inventoryData.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+            document.getElementById('stat-value').textContent = '₹' + totalValue.toLocaleString('en-IN');
+            
+            const lowStock = inventoryData.filter(item => item.quantity > 0 && item.quantity <= 5).length;
+            document.getElementById('stat-low').textContent = lowStock;
+            
+            document.getElementById('stat-categories').textContent = new Set(inventoryData.map(i => i.category)).size;
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('inventory-table-body');
+            const search = document.getElementById('searchInput').value.toLowerCase();
+            const catFilter = document.getElementById('filter-category').value;
+            const statusFilter = document.getElementById('filter-status').value;
+            
+            let filtered = inventoryData.filter(item => {
+                const matchesSearch = item.name.toLowerCase().includes(search) || item.sku.toLowerCase().includes(search);
+                const matchesCat = !catFilter || item.category === catFilter;
+                let matchesStatus = true;
+                if (statusFilter === 'in-stock') matchesStatus = item.quantity > 5;
+                else if (statusFilter === 'low') matchesStatus = item.quantity > 0 && item.quantity <= 5;
+                else if (statusFilter === 'out') matchesStatus = item.quantity === 0;
+                return matchesSearch && matchesCat && matchesStatus;
+            });
+            
+            // Sorting
+            if (sortConfig.key) {
+                filtered.sort((a, b) => {
+                    let aVal = a[sortConfig.key];
+                    let bVal = b[sortConfig.key];
+                    if (typeof aVal === 'string') {
+                        aVal = aVal.toLowerCase();
+                        bVal = bVal.toLowerCase();
+                    }
+                    if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+                    if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+                    return 0;
+                });
+            }
+            
+            document.getElementById('showing-count').textContent = `Showing ${filtered.length} items`;
+            
+            if (filtered.length === 0) {
+                tbody.innerHTML = '';
+                document.getElementById('empty-state').classList.remove('hidden');
+                return;
+            }
+            
+            document.getElementById('empty-state').classList.add('hidden');
+            
+            tbody.innerHTML = filtered.map(item => {
+                let statusClass = item.quantity === 0 ? 'status-out' : item.quantity <= 5 ? 'status-low' : 'status-in-stock';
+                let statusText = item.quantity === 0 ? 'Out' : item.quantity <= 5 ? 'Low' : 'OK';
+                
+                return `
+                    <tr class="inventory-row">
+                        <td class="px-6">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-500/20 to-purple-500/20 flex items-center justify-center border border-white/10 font-bold text-indigo-300">
+                                    ${item.name.charAt(0)}
+                                </div>
+                                <div>
+                                    <div class="font-medium text-white">${item.name}</div>
+                                    <div class="text-xs text-gray-500 md:hidden">${item.category}</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="px-6 text-gray-300 hidden md:table-cell">${item.category}</td>
+                        <td class="px-6">
+                            <div class="flex items-center gap-2">
+                                <span class="font-medium text-white">${item.quantity}</span>
+                                <span class="text-xs px-2 py-0.5 rounded-full ${statusClass} border md:hidden">${statusText}</span>
+                            </div>
+                        </td>
+                        <td class="px-6 font-medium text-white">₹${item.price.toLocaleString('en-IN')}</td>
+                        <td class="px-6 text-right">
+                            <span class="hidden md:inline text-xs px-2 py-1 rounded-full ${statusClass} border mr-2">${statusText}</span>
+                            <button onclick="editItem(${item.id})" class="text-indigo-400 hover:text-indigo-300 mr-3">Edit</button>
+                            <button onclick="deleteItem(${item.id})" class="text-red-400 hover:text-red-300">Del</button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function renderAlerts() {
+            const container = document.getElementById('low-stock-alerts');
+            const lowStockItems = inventoryData.filter(item => item.quantity > 0 && item.quantity <= 5);
+            
+            if (lowStockItems.length === 0) {
+                container.innerHTML = '<p class="text-gray-500 text-sm py-4 text-center">No low stock alerts</p>';
+                return;
+            }
+            
+            container.innerHTML = lowStockItems.map(item => `
+                <div class="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/5 hover:bg-white/10 transition-colors cursor-pointer" onclick="editItem(${item.id})">
+                    <div class="flex items-center gap-3">
+                        <div class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></div>
+                        <div>
+                            <div class="text-sm font-medium text-white">${item.name}</div>
+                            <div class="text-xs text-gray-400">Only ${item.quantity} left</div>
+                        </div>
+                    </div>
+                    <span class="text-xs text-amber-400 font-medium">Restock</span>
+                </div>
+            `).join('');
+        }
+
+        // ================= CHARTS =================
+
+        function updateCharts() {
+            const ctx = document.getElementById('trendChart');
+            if (!ctx) return;
+            
+            if (charts.trend) charts.trend.destroy();
+            
+            const baseValue = inventoryData.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+            const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            const data = labels.map((_, i) => Math.round(baseValue * (0.9 + (i * 0.02))));
+            
+            charts.trend = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: data,
+                        borderColor: '#818cf8',
+                        backgroundColor: 'rgba(129, 140, 248, 0.1)',
+                        fill: true,
+                        tension: 0.4,
+                        borderWidth: 2,
+                        pointRadius: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#64748b' } },
+                        y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#64748b', callback: v => '₹' + (v/1000) + 'k' } }
+                    }
+                }
+            });
+        }
+
+        // ================= UTILITIES =================
+
+        function exportToExcel() {
+            const headers = ['ID', 'Name', 'Category', 'SKU', 'Quantity', 'Price (₹)', 'Total Value', 'Description'];
+            const rows = inventoryData.map(item => [
+                item.id, item.name, item.category, item.sku, item.quantity, item.price, 
+                item.price * item.quantity, item.description || ''
+            ]);
+            
+            const csv = [headers.join(','), ...rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(','))].join('\n');
+            const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+            
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `inventory-${currentTenant}-${new Date().toISOString().split('T')[0]}.csv`;
+            link.click();
+        }
+
+        function handleSearch() {
+            renderTable();
+        }
+
+        function filterByCategory(cat) {
+            document.getElementById('filter-category').value = cat;
+            switchView('inventory');
+            renderTable();
+        }
+
+        function sortTable(key) {
+            if (sortConfig.key === key) {
+                sortConfig.direction = sortConfig.direction === 'asc' ? 'desc' : 'asc';
+            } else {
+                sortConfig.key = key;
+                sortConfig.direction = 'asc';
+            }
+            renderTable();
+        }
+
+        function switchView(view) {
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                btn.classList.remove('bg-white/10', 'text-white');
+                btn.classList.add('text-gray-400');
+            });
+            event.currentTarget.classList.remove('text-gray-400');
+            event.currentTarget.classList.add('bg-white/10', 'text-white');
+            
+            document.getElementById('dashboard-view').classList.add('hidden');
+            document.getElementById('inventory-view').classList.add('hidden');
+            
+            if (view === 'dashboard') document.getElementById('dashboard-view').classList.remove('hidden');
+            if (view === 'inventory') document.getElementById('inventory-view').classList.remove('hidden');
+        }
+
+        function openAddModal() {
+            editingId = null;
+            document.getElementById('modal-title').textContent = 'Add New Item';
+            document.getElementById('item-form').reset();
+            document.getElementById('item-modal').classList.remove('hidden');
+            document.getElementById('item-modal').classList.add('flex');
+        }
+
+        function editItem(id) {
+            const item = inventoryData.find(i => i.id === id);
+            if (!item) return;
+            
+            editingId = id;
+            document.getElementById('modal-title').textContent = 'Edit Item';
+            document.getElementById('item-name').value = item.name;
+            document.getElementById('item-category').value = item.category;
+            document.getElementById('item-sku').value = item.sku;
+            document.getElementById('item-quantity').value = item.quantity;
+            document.getElementById('item-price').value = item.price;
+            document.getElementById('item-description').value = item.description || '';
+            
+            document.getElementById('item-modal').classList.remove('hidden');
+            document.getElementById('item-modal').classList.add('flex');
+        }
+
+        function closeModal() {
+            document.getElementById('item-modal').classList.add('hidden');
+            document.getElementById('item-modal').classList.remove('flex');
+        }
+
+        function closeDeleteModal() {
+            document.getElementById('delete-modal').classList.add('hidden');
+            document.getElementById('delete-modal').classList.remove('flex');
+            deletingId = null;
+        }
+
+        function toggleSidebar() {
+            document.getElementById('sidebar').classList.toggle('hidden');
+        }
+
+        function logout() {
+            auth.signOut();
+            localStorage.removeItem('nexus_tenant');
+            localStorage.removeItem('nexus_email');
+            location.reload();
+        }
+
+        // Auto-login if session exists
+        window.addEventListener('load', () => {
+            const savedTenant = localStorage.getItem('nexus_tenant');
+            const savedEmail = localStorage.getItem('nexus_email');
+            if (savedTenant && savedEmail) {
+                document.getElementById('tenant-id').value = savedTenant;
+                document.getElementById('login-email').value = savedEmail;
+            }
+        });
+
+        // Close modals on outside click
+        window.onclick = (e) => {
+            if (e.target.id === 'item-modal') closeModal();
+            if (e.target.id === 'delete-modal') closeDeleteModal();
+            if (e.target.id === 'category-modal') closeCategoryModal();
+            if (e.target.id === 'admin-panel') closeAdminPanel();
+        };
+    </script>
+</body>
+</html>
